@@ -59,6 +59,27 @@ Client::Client(int _nthreads) {
     tBenchClientInit();
 }
 
+Client::Client(int _nthreads, uint64_t maxreqs, uint64_t warmup) {
+    status = INIT;
+
+    nthreads = _nthreads;
+    pthread_mutex_init(&lock, nullptr);
+    pthread_barrier_init(&barrier, nullptr, nthreads);
+    minSleepNs = getOpt("TBENCH_MINSLEEPNS", 0);
+    seed = getOpt("TBENCH_RANDSEED", 0);
+    lambda = getOpt<double>("TBENCH_QPS", 1000.0) * 1e-9;
+
+    reqsSended = 0;
+    numReqsSent = 0;
+    maxreqs = maxreqs;
+    warmupreqs = warmup;
+
+    dist = nullptr;
+    startedReqs = 0;
+    
+    tBenchClientInit();
+}
+
 Request* Client::startReq() {
     if (status == INIT) {
         pthread_barrier_wait(&barrier); // Wait for all threads to start up
@@ -91,7 +112,6 @@ Request* Client::startReq() {
     inFlightReqs[req->id] = req;
 
     pthread_mutex_unlock(&lock);
-
     uint64_t curNs = getCurNs();
 
     if (curNs < req->genNs) {
@@ -110,9 +130,7 @@ void Client::finiReq(Response* resp) {
 
     if (status == ROI) {
         uint64_t curNs = getCurNs();
-
         assert(curNs > req->genNs);
-
         uint64_t sjrn = curNs - req->genNs;
         assert(sjrn >= resp->svcNs);
         uint64_t qtime = sjrn - resp->svcNs;
@@ -124,6 +142,19 @@ void Client::finiReq(Response* resp) {
 
     delete req;
     inFlightReqs.erase(it);
+    //modificacion
+    ++reqsSended;
+
+    if(reqsSended == warmupreqs) {
+        _startRoi();
+    } else if(reqsSended >= (maxreqs + warmupreqs)) {
+        dumpStats();
+        std::cerr << "finishing requests" << std::endl;
+        pthread_mutex_unlock(&lock);
+        syscall(SYS_exit_group, 0);
+    }
+    //---------------------------------------------------------------------
+
     pthread_mutex_unlock(&lock);
 }
 
@@ -213,15 +244,72 @@ NetworkedClient::NetworkedClient(int nthreads, std::string serverip,
     }
 }
 
-bool NetworkedClient::send(Request* req) {
-    pthread_mutex_lock(&sendLock);
+//Modificaciones
+NetworkedClient::NetworkedClient(int nthreads, std::string serverIp, int serverPort, uint64_t maxreq, uint64_t warmup) : Client(nthreads, maxreq, warmup) 
+{
+    pthread_mutex_init(&sendLock, nullptr);
+    pthread_mutex_init(&recvLock, nullptr);
 
-    int len = sizeof(Request) - MAX_REQ_BYTES + req->len;
-    int sent = sendfull(serverFd, reinterpret_cast<const char*>(req), len, 0);
-    if (sent != len) {
-        error = strerror(errno);
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *servInfo;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    std::stringstream portstr;
+    portstr << serverPort;
+
+    const char *serverStr = serverIp.size() ? serverIp.c_str() : nullptr;
+
+    if ((status = getaddrinfo(serverStr, portstr.str().c_str(), &hints, &servInfo)) != 0)
+    {
+        std::cerr << "getaddrinfo() failed: " << gai_strerror(status) << std::endl;
+        exit(-1);
     }
 
+    serverFd = socket(servInfo->ai_family, servInfo->ai_socktype, servInfo->ai_protocol);
+
+    if (serverFd == -1)
+    {
+        std::cerr << "socket() failed: " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+
+    if (connect(serverFd, servInfo->ai_addr, servInfo->ai_addrlen) == -1)
+    {
+        std::cerr << "connect() failed: " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+
+    int nodelay = 1;
+    if (setsockopt(serverFd, IPPROTO_TCP, TCP_NODELAY,
+                   reinterpret_cast<char *>(&nodelay), sizeof(nodelay)) == -1)
+    {
+        std::cerr << "setsockopt(TCP_NODELAY) failed: " << strerror(errno)
+                  << std::endl;
+        exit(-1);
+    }    
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+bool NetworkedClient::send(Request* req) {
+    pthread_mutex_lock(&sendLock);
+    //Modificaciones
+    int len = 0;
+    int sent = 0;
+    if(numReqsSent != (warmupreqs + maxreqs)) {
+        len = sizeof(Request) - MAX_REQ_BYTES + req->len;
+        sent = sendfull(serverFd, reinterpret_cast<const char*>(req), len, 0);
+        if (sent != len) {
+            error = strerror(errno);
+        }
+        ++numReqsSent;
+    }
+    //--------------------------------------------------------------------------------------
     pthread_mutex_unlock(&sendLock);
 
     return (sent == len);
@@ -252,3 +340,15 @@ bool NetworkedClient::recv(Response* resp) {
     return true;
 }
 
+uint64_t NetworkedClient::get_WarmupReqs() const
+{
+    return warmupreqs;
+}
+uint64_t NetworkedClient::get_MaxReqs() const
+{
+    return maxreqs;
+}
+std::atomic<uint64_t> &NetworkedClient::get_ReqsSended()
+{
+    return reqsSended;
+}

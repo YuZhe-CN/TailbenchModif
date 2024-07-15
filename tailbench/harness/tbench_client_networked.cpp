@@ -56,15 +56,18 @@ void* recv(void* c) {
 
         if (resp.type == RESPONSE) {
             client->finiReq(&resp);
-        } else if (resp.type == ROI_BEGIN) {
-            client->startRoi();
-        } else if (resp.type == FINISH) {
-            client->dumpStats();
-            syscall(SYS_exit_group, 0);
-        } else {
-            std::cerr << "Unknown response type: " << resp.type << std::endl;
-            return nullptr;
-        }
+        } 
+        //Modificaciones
+        // else if (resp.type == ROI_BEGIN) {
+        //     client->startRoi();
+        // } else if (resp.type == FINISH) {
+        //     client->dumpStats();
+        //     syscall(SYS_exit_group, 0);
+        // } else {
+        //     std::cerr << "Unknown response type: " << resp.type << std::endl;
+        //     return nullptr;
+        // }
+        //--------------------------------------------------------------
     }
 }
 
@@ -73,7 +76,12 @@ int main(int argc, char* argv[]) {
     std::string server = getOpt<std::string>("TBENCH_SERVER", "");
     int serverport = getOpt<int>("TBENCH_SERVER_PORT", 8080);
 
-    NetworkedClient* client = new NetworkedClient(nthreads, server, serverport);
+    //Modificaciones
+    uint64_t warmupreqs = getOpt<u_int64_t>("TBENCH_WARMUPREQS", 0);
+    uint64_t maxreqs = getOpt<uint64_t>("TBENCH_MAXREQS", 0);
+    //------------------------------------------------------------------
+
+    NetworkedClient* client = new NetworkedClient(nthreads, server, serverport, maxreqs, warmupreqs);
 
     std::vector<pthread_t> senders(nthreads);
     std::vector<pthread_t> receivers(nthreads);
