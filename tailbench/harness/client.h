@@ -50,7 +50,7 @@ class Client {
         //Modificaciones
         std::atomic<uint64_t> reqsSended;
         std::atomic<uint64_t> numReqsSent;
-        uint64_t maxreqs;
+        uint64_t maxpeticiones;
         uint64_t warmupreqs;
 
         //----------------------------------------------------------------
