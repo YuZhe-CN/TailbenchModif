@@ -71,7 +71,7 @@ Client::Client(int _nthreads, uint64_t maxreqs, uint64_t warmup) {
 
     reqsSended = 0;
     numReqsSent = 0;
-    maxreqs = maxreqs;
+    this->maxreqs = maxreqs;
     warmupreqs = warmup;
 
     dist = nullptr;
