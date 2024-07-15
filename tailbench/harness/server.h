@@ -77,6 +77,9 @@ class NetworkedServer : public Server {
                                // This is incremented by 1 on each go. This
                                // avoids unfairly favoring some clients over
                                // others
+        //Modificaciones
+        int listenFd;
+        //-------------------------
 
         void printDebugStats() const;
 
@@ -90,6 +93,8 @@ class NetworkedServer : public Server {
         size_t recvReq(int id, void** data);
         void sendResp(int id, const void* data, size_t size);
         void finish();
+
+        void checkNewClient(int fd, fd_set *set);
 };
 
 #endif

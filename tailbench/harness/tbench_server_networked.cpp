@@ -253,21 +253,21 @@ void NetworkedServer::sendResp(int id, const void* data, size_t len) {
 
     ++finishedReqs;
 
-    if (finishedReqs == warmupReqs) {
-        resp->type = ROI_BEGIN;
-        for (int fd : clientFds) {
-            totalLen = sizeof(Response) - MAX_RESP_BYTES;
-            sent = sendfull(fd, reinterpret_cast<const char*>(resp), totalLen, 0);
-            assert(sent == totalLen);
-        }
-    } else if (finishedReqs == warmupReqs + maxReqs) { 
-        resp->type = FINISH;
-        for (int fd : clientFds) {
-            totalLen = sizeof(Response) - MAX_RESP_BYTES;
-            sent = sendfull(fd, reinterpret_cast<const char*>(resp), totalLen, 0);
-            assert(sent == totalLen);
-        }
-    }
+    // if (finishedReqs == warmupReqs) {
+    //     resp->type = ROI_BEGIN;
+    //     for (int fd : clientFds) {
+    //         totalLen = sizeof(Response) - MAX_RESP_BYTES;
+    //         sent = sendfull(fd, reinterpret_cast<const char*>(resp), totalLen, 0);
+    //         assert(sent == totalLen);
+    //     }
+    // } else if (finishedReqs == warmupReqs + maxReqs) { 
+    //     resp->type = FINISH;
+    //     for (int fd : clientFds) {
+    //         totalLen = sizeof(Response) - MAX_RESP_BYTES;
+    //         sent = sendfull(fd, reinterpret_cast<const char*>(resp), totalLen, 0);
+    //         assert(sent == totalLen);
+    //     }
+    // }
 
     delete resp;
     
