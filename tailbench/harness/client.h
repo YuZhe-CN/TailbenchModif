@@ -27,6 +27,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 enum ClientStatus { INIT, WARMUP, ROI, FINISHED };
 
@@ -46,6 +47,14 @@ class Client {
         uint64_t startedReqs;
         std::unordered_map<uint64_t, Request*> inFlightReqs;
 
+        //Modificaciones
+        std::atomic<uint64_t> reqsSended;
+        std::atomic<uint64_t> numReqsSent;
+        uint64_t maxReqs;
+        uint64_t warmupReqs;
+
+        //----------------------------------------------------------------
+
         std::vector<uint64_t> svcTimes;
         std::vector<uint64_t> queueTimes;
         std::vector<uint64_t> sjrnTimes;
@@ -54,7 +63,9 @@ class Client {
 
     public:
         Client(int nthreads);
-
+        //Modificacion
+        Client(int _nthreads, uint64_t maxreqs, uint64_t warmup);
+        //----------------------------------------------------------------
         Request* startReq();
         void finiReq(Response* resp);
 
@@ -73,9 +84,16 @@ class NetworkedClient : public Client {
 
     public:
         NetworkedClient(int nthreads, std::string serverip, int serverport);
+        //Modificacion
+        NetworkedClient(int nthreads, std::string serverip, int serverport, uint64_t maxreq, uint64_t warmup);
         bool send(Request* req);
         bool recv(Response* resp);
         const std::string& errmsg() const { return error; }
+        //Modificaciones
+        uint64_t get_WarmupReqs() const;
+        uint64_t get_MaxReqs() const;
+        std::atomic<uint64_t>& get_ReqsSended();
+        //--------------------------------------------------------------------------------------------------------------
 };
 
 #endif
