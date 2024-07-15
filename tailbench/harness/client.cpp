@@ -71,8 +71,8 @@ Client::Client(int _nthreads, uint64_t maxreqs, uint64_t warmup) {
 
     reqsSended = 0;
     numReqsSent = 0;
-    maxReqs = maxreqs;
-    warmupReqs = warmup;
+    maxreqs = maxreqs;
+    warmupreqs = warmup;
 
     dist = nullptr;
     startedReqs = 0;
@@ -145,9 +145,9 @@ void Client::finiReq(Response* resp) {
     //modificacion
     ++reqsSended;
 
-    if(reqsSended == warmupReqs) {
+    if(reqsSended == warmupreqs) {
         _startRoi();
-    } else if(reqsSended >= (maxReqs + warmupReqs)) {
+    } else if(reqsSended >= (maxreqs + warmupreqs)) {
         dumpStats();
         std::cerr << "finishing requests" << std::endl;
         pthread_mutex_unlock(&lock);
@@ -301,7 +301,7 @@ bool NetworkedClient::send(Request* req) {
     //Modificaciones
     int len = 0;
     int sent = 0;
-    if(numReqsSent != (warmupReqs + maxReqs)) {
+    if(numReqsSent != (warmupreqs + maxreqs)) {
         len = sizeof(Request) - MAX_REQ_BYTES + req->len;
         sent = sendfull(serverFd, reinterpret_cast<const char*>(req), len, 0);
         if (sent != len) {
@@ -342,11 +342,11 @@ bool NetworkedClient::recv(Response* resp) {
 
 uint64_t NetworkedClient::get_WarmupReqs() const
 {
-    return warmupReqs;
+    return warmupreqs;
 }
 uint64_t NetworkedClient::get_MaxReqs() const
 {
-    return maxReqs;
+    return maxreqs;
 }
 std::atomic<uint64_t> &NetworkedClient::get_ReqsSended()
 {
