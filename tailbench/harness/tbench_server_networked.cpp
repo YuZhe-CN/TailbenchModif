@@ -177,7 +177,7 @@ size_t NetworkedServer::recvReq(int id, void** data) {
     bool success = false;
     Request* req;
     int fd = -1;
-    
+
     while(true) {
 
         while (!success && clientFds.size() > 0) {
@@ -243,7 +243,7 @@ size_t NetworkedServer::recvReq(int id, void** data) {
         }
     }
    
-};
+}
 //----------------------------------------------------------------
 
 void NetworkedServer::sendResp(int id, const void* data, size_t len) {
