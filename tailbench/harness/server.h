@@ -95,7 +95,7 @@ class NetworkedServer : public Server {
         void finish();
 
         //modificacion
-        void checkNewClient(fd_set *set);
+        bool checkNewClient(fd_set *set);
 };
 
 #endif
