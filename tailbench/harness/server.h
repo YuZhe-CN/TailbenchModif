@@ -94,7 +94,8 @@ class NetworkedServer : public Server {
         void sendResp(int id, const void* data, size_t size);
         void finish();
 
-        void checkNewClient(int fd, fd_set *set);
+        //modificacion
+        void checkNewClient(fd_set *set);
 };
 
 #endif

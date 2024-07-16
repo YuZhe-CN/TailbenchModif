@@ -109,33 +109,36 @@ NetworkedServer::NetworkedServer(int nthreads, std::string ip, int port, \
         exit(-1);
     }
 
+    //Modificaciones
+    listenFd = listener;
     // Establish connections with clients
-    struct sockaddr_storage clientAddr;
-    socklen_t clientAddrSize;
+    // struct sockaddr_storage clientAddr;
+    // socklen_t clientAddrSize;
 
-    for (int c = 0; c < nclients; ++c) {
-        clientAddrSize = sizeof(clientAddr);
-        memset(&clientAddr, 0, clientAddrSize);
+    // for (int c = 0; c < nclients; ++c) {
+    //     clientAddrSize = sizeof(clientAddr);
+    //     memset(&clientAddr, 0, clientAddrSize);
 
-        int clientFd = accept(listener, \
-                reinterpret_cast<struct sockaddr*>(&clientAddr), \
-                &clientAddrSize);
+    //     int clientFd = accept(listener, \
+    //             reinterpret_cast<struct sockaddr*>(&clientAddr), \
+    //             &clientAddrSize);
 
-        if (clientFd == -1) {
-            std::cerr << "accept() failed: " << strerror(errno) << std::endl;
-            exit(-1);
-        }
+    //     if (clientFd == -1) {
+    //         std::cerr << "accept() failed: " << strerror(errno) << std::endl;
+    //         exit(-1);
+    //     }
 
-        int nodelay = 1;
-        if (setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, 
-                reinterpret_cast<char*>(&nodelay), sizeof(nodelay)) == -1) {
-            std::cerr << "setsockopt(TCP_NODELAY) failed: " << strerror(errno) \
-                << std::endl;
-            exit(-1);
-        }
+    //     int nodelay = 1;
+    //     if (setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, 
+    //             reinterpret_cast<char*>(&nodelay), sizeof(nodelay)) == -1) {
+    //         std::cerr << "setsockopt(TCP_NODELAY) failed: " << strerror(errno) \
+    //             << std::endl;
+    //         exit(-1);
+    //     }
 
-        clientFds.push_back(clientFd);
-    }
+    //     clientFds.push_back(clientFd);
+    // }
+    //----------------------------------------------------------------
 }
 
 NetworkedServer::~NetworkedServer() {
@@ -184,6 +187,11 @@ size_t NetworkedServer::recvReq(int id, void** data) {
             int maxFd = -1;
             fd_set readSet;
             FD_ZERO(&readSet);
+
+            //Modificacion nuevo cliente
+            FD_SET(listenFd, &readSet);
+            maxFd = listenFd;
+
             for (int f : clientFds) {
                 FD_SET(f, &readSet);
                 if (f > maxFd) maxFd = f;
@@ -196,6 +204,16 @@ size_t NetworkedServer::recvReq(int id, void** data) {
                 exit(-1);
             }
 
+            //Si se ha detectado nuevo cliente habra que actualizar fdset porque hemos actualizado clientFds
+            if(checkNewClient(&readSet)) {
+                FD_ZERO(&readSet);
+                maxFd = -1;
+                for (int f : clientFds) {
+                    FD_SET(f, &readSet);
+                    if (f > maxFd) maxFd = f;
+                }
+            }
+            
             fd = -1;
 
             for (size_t i = 0; i < clientFds.size(); ++i) {
@@ -225,12 +243,30 @@ size_t NetworkedServer::recvReq(int id, void** data) {
         }
 
         if (clientFds.size() == 0) {
-            pthread_mutex_unlock(&recvLock);
-            std::cerr << "No clients available" << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            pthread_mutex_lock(&recvLock);
+            // pthread_mutex_unlock(&recvLock);
+            // std::cerr << "No clients available" << std::endl;
+            // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // pthread_mutex_lock(&recvLock);
+            //Modificacion nuevo cliente
+            int maxFd = -1;
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            
+            FD_SET(listenFd, &readSet);
+            maxFd = listenFd;
+
+            int ret = select(maxFd + 1, &readSet, nullptr, nullptr, nullptr);
+            if (ret == -1) {
+                std::cerr << "select() failed: " << strerror(errno) << std::endl;
+                pthread_mutex_unlock(&recvLock);
+                exit(-1);
+            }
+
+            checkNewClient(&readSet);
+            //----------------------------------------------------------------
             //exit(0);
-        } else {
+        } 
+        if(success) {
             uint64_t curNs = getCurNs();
             reqInfo[id].id = req->id;
             reqInfo[id].startNs = curNs;
@@ -304,6 +340,41 @@ void NetworkedServer::finish() {
     
     pthread_mutex_unlock(&sendLock);
 }
+
+//Modificacion
+bool NetworkedServer::checkNewClient(fd_set* fdSet) {
+    struct sockaddr_storage clientAddr;
+    socklen_t clientAddrSize;
+    std::cout << "Checking new connection" << std::endl;
+    bool res = false;
+    if(FD_ISSET(listenFd, fdSet)) {
+        clientAddrSize = sizeof(clientAddr);
+        memset(&clientAddr, 0, clientAddrSize);
+
+        int clientFd = accept(listenFd, \
+                reinterpret_cast<struct sockaddr*>(&clientAddr), \
+                &clientAddrSize);
+
+        if (clientFd == -1) {
+            std::cerr << "accept() failed: " << strerror(errno) << std::endl;
+            return false;
+        }
+
+        int nodelay = 1;
+        if (setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, 
+                reinterpret_cast<char*>(&nodelay), sizeof(nodelay)) == -1) {
+            std::cerr << "setsockopt(TCP_NODELAY) failed: " << strerror(errno) \
+                << std::endl;
+            close(clientFd);
+            return false;
+        }
+
+        clientFds.push_back(clientFd);
+        res = true;
+    }
+    return res;
+}
+//----------------------------------------------------------------
 
 /*******************************************************************************
  * Per-thread State
