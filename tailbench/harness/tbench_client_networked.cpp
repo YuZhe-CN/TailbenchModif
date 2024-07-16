@@ -30,6 +30,12 @@ void* send(void* c) {
     NetworkedClient* client = reinterpret_cast<NetworkedClient*>(c);
 
     while (true) {
+        //If the threand already sent the numbre of queries, then finish
+        uint64_t numRequestFinished = client->get_ReqsSended();
+        if(numRequestFinished == (client->get_MaxReqs() + client->get_WarmupReqs())) {
+            pthread_exit(nullptr);
+        }
+
         Request* req = client->startReq();
         if (!client->send(req)) {
             std::cerr << "[CLIENT] send() failed : " << client->errmsg() \

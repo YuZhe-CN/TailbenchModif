@@ -350,5 +350,5 @@ uint64_t NetworkedClient::get_MaxReqs() const
 }
 std::atomic<uint64_t> &NetworkedClient::get_ReqsSended()
 {
-    return reqsSended;
+    return numReqsSent;
 }
