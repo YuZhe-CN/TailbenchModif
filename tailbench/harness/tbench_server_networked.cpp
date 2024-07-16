@@ -41,6 +41,11 @@
 #include <sstream>
 #include <string>
 
+//Modificacion
+#include <thread>
+#include <chrono>
+//----------------------------------------------------------------
+
 /*******************************************************************************
  * NetworkedServer
  *******************************************************************************/
@@ -165,72 +170,81 @@ bool NetworkedServer::checkRecv(int recvd, int expected, int fd) {
     return success;
 }
 
+//*Modificación */
 size_t NetworkedServer::recvReq(int id, void** data) {
     pthread_mutex_lock(&recvLock);
 
     bool success = false;
     Request* req;
     int fd = -1;
+    
+    while(true) {
 
-    while (!success && clientFds.size() > 0) {
-        int maxFd = -1;
-        fd_set readSet;
-        FD_ZERO(&readSet);
-        for (int f : clientFds) {
-            FD_SET(f, &readSet);
-            if (f > maxFd) maxFd = f;
-        }
-
-        int ret = select(maxFd + 1, &readSet, nullptr, nullptr, nullptr);
-        if (ret == -1) {
-            std::cerr << "select() failed: " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-
-        fd = -1;
-
-        for (size_t i = 0; i < clientFds.size(); ++i) {
-            size_t idx = (recvClientHead + i) % clientFds.size();
-            if (FD_ISSET(clientFds[idx], &readSet)) {
-                fd = clientFds[idx];
-                break;
+        while (!success && clientFds.size() > 0) {
+            int maxFd = -1;
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            for (int f : clientFds) {
+                FD_SET(f, &readSet);
+                if (f > maxFd) maxFd = f;
             }
+
+            int ret = select(maxFd + 1, &readSet, nullptr, nullptr, nullptr);
+            if (ret == -1) {
+                std::cerr << "select() failed: " << strerror(errno) << std::endl;
+                pthread_mutex_unlock(&recvLock);
+                exit(-1);
+            }
+
+            fd = -1;
+
+            for (size_t i = 0; i < clientFds.size(); ++i) {
+                size_t idx = (recvClientHead + i) % clientFds.size();
+                if (FD_ISSET(clientFds[idx], &readSet)) {
+                    fd = clientFds[idx];
+                    break;
+                }
+            }
+
+            recvClientHead = (recvClientHead + 1) % clientFds.size();
+
+            assert(fd != -1);
+
+            int len = sizeof(Request) - MAX_REQ_BYTES; // Read request header first
+
+            req = &reqbuf[id];
+            int recvd = recvfull(fd, reinterpret_cast<char*>(req), len, 0);
+
+            success = checkRecv(recvd, len, fd);
+            if (!success) continue;
+            
+            recvd = recvfull(fd, req->data, req->len, 0);
+
+            success = checkRecv(recvd, req->len, fd);
+            if (!success) continue;
         }
 
-        recvClientHead = (recvClientHead + 1) % clientFds.size();
+        if (clientFds.size() == 0) {
+            pthread_mutex_unlock(&recvLock);
+            std::cerr << "No clients available" << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            pthread_mutex_lock(&recvLock);
+            //exit(0);
+        } else {
+            uint64_t curNs = getCurNs();
+            reqInfo[id].id = req->id;
+            reqInfo[id].startNs = curNs;
+            activeFds[id] = fd;
 
-        assert(fd != -1);
+            *data = reinterpret_cast<void*>(&req->data);
+            pthread_mutex_unlock(&recvLock);
 
-        int len = sizeof(Request) - MAX_REQ_BYTES; // Read request header first
-
-        req = &reqbuf[id];
-        int recvd = recvfull(fd, reinterpret_cast<char*>(req), len, 0);
-
-        success = checkRecv(recvd, len, fd);
-        if (!success) continue;
-        
-        recvd = recvfull(fd, req->data, req->len, 0);
-
-        success = checkRecv(recvd, req->len, fd);
-        if (!success) continue;
+            return req->len;
+        }
     }
-
-    if (clientFds.size() == 0) {
-        std::cerr << "All clients exited. Server finishing" << std::endl;
-        exit(0);
-    } else {
-        uint64_t curNs = getCurNs();
-        reqInfo[id].id = req->id;
-        reqInfo[id].startNs = curNs;
-        activeFds[id] = fd;
-
-        *data = reinterpret_cast<void*>(&req->data);
-    }
-
-    pthread_mutex_unlock(&recvLock);
-
-    return req->len;
+   
 };
+//----------------------------------------------------------------
 
 void NetworkedServer::sendResp(int id, const void* data, size_t len) {
     pthread_mutex_lock(&sendLock);
